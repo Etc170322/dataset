@@ -688,12 +688,11 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
       train_op = optimization.create_optimizer(
           total_loss, learning_rate, num_train_steps, num_warmup_steps, use_tpu)
 
-      output_spec = tf.estimator.EstimatorSpec(
+      output_spec = tf.contrib.tpu.TPUEstimatorSpec(
           mode=mode,
           loss=total_loss,
           train_op=train_op,
-          #scaffold_fn=scaffold_fn
-      )
+          scaffold_fn=scaffold_fn)
     elif mode == tf.estimator.ModeKeys.EVAL:
 
       def metric_fn(per_example_loss, label_ids, logits):
@@ -706,17 +705,14 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
         }
 
       eval_metrics = (metric_fn, [per_example_loss, label_ids, logits])
-      output_spec = tf.estimator.EstimatorSpec(
+      output_spec = tf.contrib.tpu.TPUEstimatorSpec(
           mode=mode,
           loss=total_loss,
-          #eval_metrics=eval_metrics,
-          #scaffold_fn=scaffold_fn
-      )
+          eval_metrics=eval_metrics,
+          scaffold_fn=scaffold_fn)
     else:
-      output_spec = tf.estimator.EstimatorSpec(
-          mode=mode, predictions=probabilities,
-          #scaffold_fn=scaffold_fn
-      )
+      output_spec = tf.contrib.tpu.TPUEstimatorSpec(
+          mode=mode, predictions=probabilities, scaffold_fn=scaffold_fn)
     return output_spec
 
   return model_fn
@@ -802,7 +798,7 @@ def main(_):
       "mnli": MnliProcessor,
       "mrpc": MrpcProcessor,
       "xnli": XnliProcessor,
-      "selfsim":SelfProcessor
+	  "selfsim":SelfProcessor,
   }
 
   if not FLAGS.do_train and not FLAGS.do_eval and not FLAGS.do_predict:
@@ -905,10 +901,10 @@ def main(_):
     eval_steps = None
     # However, if running eval on the TPU, you will need to specify the
     # number of steps.
-    # if FLAGS.use_tpu:
-    #   # Eval will be slightly WRONG on the TPU because it will truncate
-    #   # the last batch.
-    #   eval_steps = int(len(eval_examples) / FLAGS.eval_batch_size)
+    if FLAGS.use_tpu:
+      # Eval will be slightly WRONG on the TPU because it will truncate
+      # the last batch.
+      eval_steps = int(len(eval_examples) / FLAGS.eval_batch_size)
 
     eval_drop_remainder = True if FLAGS.use_tpu else False
     eval_input_fn = file_based_input_fn_builder(
@@ -937,12 +933,12 @@ def main(_):
     tf.logging.info("  Num examples = %d", len(predict_examples))
     tf.logging.info("  Batch size = %d", FLAGS.predict_batch_size)
 
-    # if FLAGS.use_tpu:
-    #   # Warning: According to tpu_estimator.py Prediction on TPU is an
-    #   # experimental feature and hence not supported here
-    #   raise ValueError("Prediction in TPU not supported")
+    if FLAGS.use_tpu:
+      # Warning: According to tpu_estimator.py Prediction on TPU is an
+      # experimental feature and hence not supported here
+      raise ValueError("Prediction in TPU not supported")
 
-    predict_drop_remainder = False
+    predict_drop_remainder = True if FLAGS.use_tpu else False
     predict_input_fn = file_based_input_fn_builder(
         input_file=predict_file,
         seq_length=FLAGS.max_seq_length,
